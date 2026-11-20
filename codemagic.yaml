@@ -1,0 +1,52 @@
+workflows:
+  jarvix_android_apk:
+    name: JARVIX Android APK
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+    scripts:
+      - name: Unpack the JARVIX source ZIP
+        script: |
+          test -f JARVIX-v1.1.0-source.zip || { echo "Upload JARVIX-v1.1.0-source.zip to the repository root"; exit 1; }
+          unzip -q JARVIX-v1.1.0-source.zip
+          test -f JARVIX/pubspec.yaml
+      - name: Upgrade Android Gradle tools for Flutter
+        script: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          wrapper = Path("JARVIX/android/gradle/wrapper/gradle-wrapper.properties")
+          wrapper_text = wrapper.read_text()
+          gradle_url = "gradle-9.5.0-all.zip"
+          for old_url in ("gradle-9.1.0-all.zip", "gradle-9.3.1-all.zip"):
+              wrapper_text = wrapper_text.replace(old_url, gradle_url)
+          if gradle_url not in wrapper_text:
+              raise SystemExit(f"Unexpected Gradle wrapper URL in {wrapper}")
+          wrapper.write_text(wrapper_text)
+
+          settings = Path("JARVIX/android/settings.gradle.kts")
+          settings_text = settings.read_text()
+          old_agp = 'id("com.android.application") version "9.0.1" apply false'
+          new_agp = 'id("com.android.application") version "9.1.1" apply false'
+          if old_agp in settings_text:
+              settings_text = settings_text.replace(old_agp, new_agp)
+          elif new_agp not in settings_text:
+              raise SystemExit(f"Unexpected Android Gradle Plugin version in {settings}")
+          settings.write_text(settings_text)
+          print(f"Gradle wrapper: {gradle_url}; Android Gradle Plugin: 9.1.1")
+          PY
+      - name: Configure Flutter SDK for Gradle
+        script: |
+          echo "flutter.sdk=$HOME/programs/flutter" > JARVIX/android/local.properties
+      - name: Get Flutter packages
+        script: |
+          cd JARVIX
+          flutter --version
+          flutter pub get
+      - name: Build release APK
+        script: |
+          cd JARVIX
+          flutter build apk --release
+    artifacts:
+      - JARVIX/build/app/outputs/flutter-apk/*.apk
