@@ -1,0 +1,42 @@
+workflows:
+  jarvix_android_apk:
+    name: JARVIX Android APK
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+    scripts:
+      - name: Unpack the JARVIX source ZIP
+        script: |
+          test -f JARVIX-v1.1.0-source.zip || { echo "Upload JARVIX-v1.1.0-source.zip to the repository root"; exit 1; }
+          unzip -q JARVIX-v1.1.0-source.zip
+          test -f JARVIX/pubspec.yaml
+      - name: Upgrade Gradle wrapper to Flutter's minimum
+        script: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          wrapper = Path("JARVIX/android/gradle/wrapper/gradle-wrapper.properties")
+          text = wrapper.read_text()
+          old = "gradle-9.1.0-all.zip"
+          new = "gradle-9.3.1-all.zip"
+          if old in text:
+              wrapper.write_text(text.replace(old, new))
+          elif new not in text:
+              raise SystemExit(f"Unexpected Gradle wrapper URL in {wrapper}")
+          print(wrapper.read_text())
+          PY
+      - name: Configure Flutter SDK for Gradle
+        script: |
+          echo "flutter.sdk=$HOME/programs/flutter" > JARVIX/android/local.properties
+      - name: Get Flutter packages
+        script: |
+          cd JARVIX
+          flutter --version
+          flutter pub get
+      - name: Build release APK
+        script: |
+          cd JARVIX
+          flutter build apk --release
+    artifacts:
+      - JARVIX/build/app/outputs/flutter-apk/*.apk
